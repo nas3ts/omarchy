@@ -53,7 +53,7 @@
 
   function tag(cell) {
     if (cell.dataset.waName !== undefined) return;
-    cell.dataset.waName = getName(cell);
+    cell.dataset.waName = "";
     cell.addEventListener("mouseenter", () => {
       if (railMode) show(cell);
     });
@@ -61,13 +61,18 @@
   }
 
   function show(cell) {
-    const name = cell.dataset.waName || getName(cell);
+    const name = getName(cell);
     if (!name) return;
     tip.textContent = name;
-    const r = cell.getBoundingClientRect();
     tip.style.display = "block";
-    tip.style.left = r.right + 8 + "px";
-    tip.style.top = Math.max(8, r.top) + "px";
+    const r = cell.getBoundingClientRect();
+    // Measure the clamped tooltip and keep it within the viewport so a long
+    // name or a row near the bottom edge doesn't run off-screen in the narrow
+    // windows this rail mode targets.
+    const w = tip.offsetWidth;
+    const h = tip.offsetHeight;
+    tip.style.left = Math.min(r.right + 8, window.innerWidth - w - 8) + "px";
+    tip.style.top = Math.min(Math.max(8, r.top), window.innerHeight - h - 8) + "px";
   }
 
   function hide() {
@@ -75,8 +80,22 @@
   }
 
   const root = document.querySelector("#pane-side") || document.body;
-  const io = new MutationObserver(() => {
-    root.querySelectorAll('[data-testid="cell-frame-container"]').forEach(tag);
+  const io = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        // Tag the node directly when it is a chat row, otherwise descend into
+        // any chat rows nested inside the added subtree. Only newly added
+        // nodes are visited, so this stays cheap as previews, timestamps, and
+        // unread state churn during normal messaging.
+        if (node.nodeType === 1) {
+          if (node.matches('[data-testid="cell-frame-container"]')) {
+            tag(node);
+          } else {
+            node.querySelectorAll('[data-testid="cell-frame-container"]').forEach(tag);
+          }
+        }
+      }
+    }
   });
   io.observe(root, { childList: true, subtree: true });
   root.querySelectorAll('[data-testid="cell-frame-container"]').forEach(tag);
